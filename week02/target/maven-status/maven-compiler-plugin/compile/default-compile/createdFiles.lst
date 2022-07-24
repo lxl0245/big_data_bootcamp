@@ -1,0 +1,6 @@
+com\geekbang\DataReducer.class
+com\geekbang\DataMRDriver.class
+com\geekbang\HBaseOper.class
+com\geekbang\HBaseTest.class
+com\geekbang\DataBean.class
+com\geekbang\DataMapper.class
