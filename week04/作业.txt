@@ -1,0 +1,129 @@
+
+-----------------------------
+---- 数据导入表中
+-----------------------------
+create table t_user_txt(
+UserID string comment '用户ID', Sex string comment '性别', Age int comment '年龄', Occupation string comment '职业', Zipcode string comment '邮编')
+comment '观众表'
+row format delimited fields terminated by ',' lines terminated by '\n'
+;
+load data local inpath '/home/hadoop/temp/users.txt' into t_user_txt;
+
+
+create table t_movie_txt(
+MovieID string comment '电影ID', MovieName string comment '电影名', MovieType string comment '电影类型'
+)
+comment '电影表'
+row format delimited fields terminated by '^' lines terminated by '\n'
+;
+load data local inpath '/home/hadoop/temp/movies.txt' into table t_movie_txt;
+
+
+create table t_rating_txt(
+UserID string comment '用户ID', MovieID string comment '电影ID', Rate int comment '评分', Times decimal(20,0) comment '评分时间'
+)
+comment '影评表'
+row format delimited
+    fields terminated by '^'
+    lines terminated by '\n'
+;
+load data local inpath '/home/hadoop/temp/ratings.txt' into t_rating_txt;
+
+
+
+
+
+-----------------------------
+---- 题1
+-----------------------------
+select b.age, avg(a.rate) from t_rating_txt a left join t_user_txt b on (b.userid=a.userid) where a.movieid=2116 group by b.age;
+输出如下：
+OK
+1       3.2941176470588234
+18      3.3580246913580245
+25      3.436548223350254
+35      3.2278481012658227
+45      2.8275862068965516
+50      3.32
+56      3.5
+Time taken: 129.738 seconds, Fetched: 7 row(s)
+
+
+
+-----------------------------
+---- 题2
+-----------------------------
+with ta as (
+select a.*, b.sex
+from t_rating_txt a
+left join t_user_txt b on (b.userid=a.userid)
+
+), tb as (
+select sex, movieid, count(*) as rate_times, avg(rate) as avg_rate
+from ta
+where sex='M'
+group by sex, movieid
+having count(*)>50
+order by avg_rate desc
+limit 10
+)
+select tb.sex, m.moviename, tb.rate_times, tb.avg_rate
+from tb 
+left join t_movie_txt m on (m.movieid=tb.movieid)
+;
+输出如下：
+OK
+M       Sanjuro (1962)  61      4.639344262295082
+M       Godfather, The (1972)   1740    4.583333333333333
+M       Seven Samurai (The Magnificent Seven) (Shichinin no samurai) (1954)     522     4.576628352490421
+M       Shawshank Redemption, The (1994)        1600    4.560625
+M       Raiders of the Lost Ark (1981)  1942    4.520597322348094
+M       Usual Suspects, The (1995)      1370    4.518248175182482
+M       Star Wars: Episode IV - A New Hope (1977)       2344    4.495307167235495
+M       Schindler's List (1993) 1689    4.49141503848431
+M       Paths of Glory (1957)   202     4.485148514851486
+M       Wrong Trousers, The (1993)      644     4.478260869565218
+Time taken: 273.585 seconds, Fetched: 10 row(s)
+
+
+
+
+
+-----------------------------
+---- 题3
+-----------------------------
+with ta as (
+select * from t_user_txt where sex='F'
+), tb as (
+select a.*
+from t_rating_txt a
+right join ta b on (b.userid=a.userid)
+), tc as (
+select userid, count(*) as rate_count
+from tb 
+group by userid
+order by rate_count desc
+limit 1
+), td as (
+select movieid, avg(rate) as rate_avg
+from tb b right join tc c on (c.userid=b.userid)
+group by movieid
+order by rate_avg desc
+limit 10
+)
+select m.moviename, td.rate_avg
+from td
+left join t_movie_txt m on (m.movieid=td.movieid)
+;
+OK
+Godfather: Part II, The (1974)  5.0
+Thin Blue Line, The (1988)      5.0
+His Girl Friday (1940)  5.0
+Duck Soup (1933)        5.0
+Trust (1990)    5.0
+Reservoir Dogs (1992)   5.0
+Crying Game, The (1992) 5.0
+Night on Earth (1991)   5.0
+African Queen, The (1951)       5.0
+Sound of Music, The (1965)      5.0
+Time taken: 747.495 seconds, Fetched: 10 row(s)
