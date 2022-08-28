@@ -1,0 +1,120 @@
+构建一条 SQL，同时 apply 下面三条优化规则：
+(1)CombineFilters
+(2)CollapseProject
+(3)BooleanSimplification
+
+spark-sql>
+         > explain extended select kmbm_1 as kmbm_alias from ( select kmbm as kmbm_1, kjyf from pzfzmx where nd=2016 ) where kjyf=8 and 1=1 and 2=2;
+== Parsed Logical Plan ==
+'Project ['kmbm_1 AS kmbm_alias#89]
++- 'Filter ((('kjyf = 8) AND (1 = 1)) AND (2 = 2))
+   +- 'SubqueryAlias __auto_generated_subquery_name
+      +- 'Project ['kmbm AS kmbm_1#88, 'kjyf]
+         +- 'Filter ('nd = 2016)
+            +- 'UnresolvedRelation [pzfzmx], [], false
+
+== Analyzed Logical Plan ==
+kmbm_alias: string
+Project [kmbm_1#88 AS kmbm_alias#89]
++- Filter (((kjyf#99 = 8) AND (1 = 1)) AND (2 = 2))
+   +- SubqueryAlias __auto_generated_subquery_name
+      +- Project [kmbm#96 AS kmbm_1#88, kjyf#99]
+         +- Filter (nd#101 = 2016)
+            +- SubqueryAlias spark_catalog.lixinli.pzfzmx
+               +- Relation lixinli.pzfzmx[flxh#95,kmbm#96,jfje#97,dfje#98,kjyf#99,fzbm#100,nd#101,dzsjbh#102] orc
+
+== Optimized Logical Plan ==
+Project [kmbm#96 AS kmbm_alias#89]
++- Filter ((isnotnull(nd#101) AND isnotnull(kjyf#99)) AND ((nd#101 = 2016) AND (kjyf#99 = 8)))
+   +- Relation lixinli.pzfzmx[flxh#95,kmbm#96,jfje#97,dfje#98,kjyf#99,fzbm#100,nd#101,dzsjbh#102] orc
+
+== Physical Plan ==
+*(1) Project [kmbm#96 AS kmbm_alias#89]
++- *(1) Filter (((isnotnull(nd#101) AND isnotnull(kjyf#99)) AND (nd#101 = 2016)) AND (kjyf#99 = 8))
+   +- *(1) ColumnarToRow
+      +- FileScan orc lixinli.pzfzmx[kmbm#96,kjyf#99,nd#101] Batched: true, DataFilters: [isnotnull(nd#101), isnotnull(kjyf#99), (nd#101 = 2016), (kjyf#99 = 8)], Format: ORC, Location: InMemoryFileIndex(1 paths)[hdfs://emr-header-1.cluster-285604:9000/user/hive/warehouse/lixinli.db..., PartitionFilters: [], PushedFilters: [IsNotNull(nd), IsNotNull(kjyf), EqualTo(nd,2016), EqualTo(kjyf,8)], ReadSchema: struct<kmbm:string,kjyf:int,nd:int>
+
+Time taken: 0.105 seconds, Fetched 1 row(s)
+spark-sql>
+
+
+
+
+构建一条 SQL，同时 apply 下面五条优化规则：
+(1)ConstantFolding
+(2)PushDownPredicates
+(3)ReplaceDistinctWithAggregate
+(4)ReplaceExceptWithAntiJoin
+(5)FoldablePropagation
+
+
+spark-sql> explain extended select dzsjbh from (select distinct dzsjmc, dzsjbh from dzsjb_txt) where dzsjmc like '%DX%' and length(dzsjmc)>(1+3)
+         > except
+         > select distinct dzsjbh from pzfzmx
+         > order by 1 desc
+         > ;
+== Parsed Logical Plan ==
+'Sort [1 DESC NULLS LAST], true
++- 'Except false
+   :- 'Project ['dzsjbh]
+   :  +- 'Filter ('dzsjmc LIKE %DX% AND ('length('dzsjmc) > (1 + 3)))
+   :     +- 'SubqueryAlias __auto_generated_subquery_name
+   :        +- 'Distinct
+   :           +- 'Project ['dzsjmc, 'dzsjbh]
+   :              +- 'UnresolvedRelation [dzsjb_txt], [], false
+   +- 'Distinct
+      +- 'Project ['dzsjbh]
+         +- 'UnresolvedRelation [pzfzmx], [], false
+
+== Analyzed Logical Plan ==
+dzsjbh: string
+Sort [dzsjbh#67 DESC NULLS LAST], true
++- Except false
+   :- Project [dzsjbh#67]
+   :  +- Filter (dzsjmc#68 LIKE %DX% AND (length(dzsjmc#68) > (1 + 3)))
+   :     +- SubqueryAlias __auto_generated_subquery_name
+   :        +- Distinct
+   :           +- Project [dzsjmc#68, dzsjbh#67]
+   :              +- SubqueryAlias spark_catalog.lixinli.dzsjb_txt
+   :                 +- HiveTableRelation [`lixinli`.`dzsjb_txt`, org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe, Data Cols: [dzsjbh#67, dzsjmc#68], Partition Cols: []]
+   +- Distinct
+      +- Project [dzsjbh#76]
+         +- SubqueryAlias spark_catalog.lixinli.pzfzmx
+            +- Relation lixinli.pzfzmx[flxh#69,kmbm#70,jfje#71,dfje#72,kjyf#73,fzbm#74,nd#75,dzsjbh#76] orc
+
+== Optimized Logical Plan ==
+Sort [dzsjbh#67 DESC NULLS LAST], true
++- Aggregate [dzsjbh#67], [dzsjbh#67]
+   +- Join LeftAnti, (dzsjbh#67 <=> dzsjbh#76)
+      :- Aggregate [dzsjmc#68, dzsjbh#67], [dzsjbh#67]
+      :  +- Project [dzsjmc#68, dzsjbh#67]
+      :     +- Filter (isnotnull(dzsjmc#68) AND (Contains(dzsjmc#68, DX) AND (length(dzsjmc#68) > 4)))
+      :        +- HiveTableRelation [`lixinli`.`dzsjb_txt`, org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe, Data Cols: [dzsjbh#67, dzsjmc#68], Partition Cols: []]
+      +- Aggregate [dzsjbh#76], [dzsjbh#76]
+         +- Project [dzsjbh#76]
+            +- Relation lixinli.pzfzmx[flxh#69,kmbm#70,jfje#71,dfje#72,kjyf#73,fzbm#74,nd#75,dzsjbh#76] orc
+
+== Physical Plan ==
+AdaptiveSparkPlan isFinalPlan=false
++- Sort [dzsjbh#67 DESC NULLS LAST], true, 0
+   +- Exchange rangepartitioning(dzsjbh#67 DESC NULLS LAST, 200), ENSURE_REQUIREMENTS, [id=#195]
+      +- HashAggregate(keys=[dzsjbh#67], functions=[], output=[dzsjbh#67])
+         +- Exchange hashpartitioning(dzsjbh#67, 200), ENSURE_REQUIREMENTS, [id=#192]
+            +- HashAggregate(keys=[dzsjbh#67], functions=[], output=[dzsjbh#67])
+               +- SortMergeJoin [coalesce(dzsjbh#67, ), isnull(dzsjbh#67)], [coalesce(dzsjbh#76, ), isnull(dzsjbh#76)], LeftAnti
+                  :- Sort [coalesce(dzsjbh#67, ) ASC NULLS FIRST, isnull(dzsjbh#67) ASC NULLS FIRST], false, 0
+                  :  +- Exchange hashpartitioning(coalesce(dzsjbh#67, ), isnull(dzsjbh#67), 200), ENSURE_REQUIREMENTS, [id=#185]
+                  :     +- HashAggregate(keys=[dzsjmc#68, dzsjbh#67], functions=[], output=[dzsjbh#67])
+                  :        +- Exchange hashpartitioning(dzsjmc#68, dzsjbh#67, 200), ENSURE_REQUIREMENTS, [id=#179]
+                  :           +- HashAggregate(keys=[dzsjmc#68, dzsjbh#67], functions=[], output=[dzsjmc#68, dzsjbh#67])
+                  :              +- Filter ((isnotnull(dzsjmc#68) AND Contains(dzsjmc#68, DX)) AND (length(dzsjmc#68) > 4))
+                  :                 +- Scan hive lixinli.dzsjb_txt [dzsjmc#68, dzsjbh#67], HiveTableRelation [`lixinli`.`dzsjb_txt`, org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe, Data Cols: [dzsjbh#67, dzsjmc#68], Partition Cols: []]
+                  +- Sort [coalesce(dzsjbh#76, ) ASC NULLS FIRST, isnull(dzsjbh#76) ASC NULLS FIRST], false, 0
+                     +- Exchange hashpartitioning(coalesce(dzsjbh#76, ), isnull(dzsjbh#76), 200), ENSURE_REQUIREMENTS, [id=#186]
+                        +- HashAggregate(keys=[dzsjbh#76], functions=[], output=[dzsjbh#76])
+                           +- Exchange hashpartitioning(dzsjbh#76, 200), ENSURE_REQUIREMENTS, [id=#181]
+                              +- HashAggregate(keys=[dzsjbh#76], functions=[], output=[dzsjbh#76])
+                                 +- FileScan orc lixinli.pzfzmx[dzsjbh#76] Batched: true, DataFilters: [], Format: ORC, Location: InMemoryFileIndex(1 paths)[hdfs://emr-header-1.cluster-285604:9000/user/hive/warehouse/lixinli.db..., PartitionFilters: [], PushedFilters: [], ReadSchema: struct<dzsjbh:string>
+
+Time taken: 0.122 seconds, Fetched 1 row(s)
+spark-sql> 
